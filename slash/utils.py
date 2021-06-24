@@ -123,3 +123,31 @@ def has_unique_vertices(mesh):
     # This is a neat trick :)
     xy = x + 1j*y
     return len(np.unique(xy)) == len(xy)
+
+
+def fit_ellipse(xy):
+    '''Center, major and minor'''
+    x, y = xy.T
+    x0, y0 = x.mean(), y.mean()
+    x = x - x0
+    y = y - y0
+
+    (A00, A01, A11) = np.linalg.lstsq(np.c_[x**2, 2*x*y, y**2], np.ones_like(x))[0]
+    A = np.array([[A00, A01], [A01, A11]])
+    vals, vecs = np.linalg.eigh(A)
+
+    vals = abs(vals)
+
+    a_max = 1./np.sqrt(vals[0])
+    vec_max = vecs[:, 0]
+
+    a_min = 1./np.sqrt(vals[1])
+    vec_min = vecs[:, 1]
+
+    if a_max < a_min:
+        a_min, a_max = a_max, a_min
+        vec_min, vec_max = vec_max, vec_min
+
+    center = np.array([x0, y0])
+
+    return center, (a_max, vec_max), (a_min, vec_min)
