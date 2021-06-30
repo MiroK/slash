@@ -58,7 +58,7 @@ for tag, surf_mesh in enumerate(valid_bdries, 1):
 # # structured of how to use nest them to define the volumes should be
 # # done based on graph theory. But what we do here is simply assume
 # # that the largest surface encloses the smallest ones
-# loops = sorted(loops, key=lambda mesh: loop_len(None, mesh), reverse=True)
+loops = sorted(loops, key=lambda mesh: loop_len(None, mesh), reverse=True)
 
 gmsh.initialize(sys.argv)
 model = gmsh.model
@@ -109,3 +109,29 @@ gmsh.finalize()
 
 # For further use
 df.File('mesh.xml') << mesh
+
+# Let's also write things for HDF5
+h5 = df.HDF5File(mesh.mpi_comm(), 'mesh.h5', 'w')
+h5.write(mesh, 'mesh')
+for dim in entity_functions:
+    h5.write(entity_functions[dim], f'entity_f_{dim}')
+h5.close()
+
+# Setting up bcs with the facet functions read from file
+mesh = df.Mesh()
+with df.HDF5File(mesh.mpi_comm(), 'mesh.h5', 'r') as h5:
+    h5.read(mesh, 'mesh', False)
+
+    tdim = mesh.topology().dim()    
+    facet_f = df.MeshFunction('size_t', mesh, tdim-1, 0)
+    h5.read(facet_f, f'entity_f_{tdim-1}')
+
+V = df.FunctionSpace(mesh, 'CG', 1)
+
+# Pick marker of one of the tagged surfaces
+tag = 1
+bc = df.DirichletBC(V, df.Constant(0), facet_f, tag)
+# Check that it works
+ncstr_dofs = len(bc.get_boundary_values())
+assert ncstr_dofs > 0
+print(f'Tag {tag} constrains {ncstr_dofs} dofs')
