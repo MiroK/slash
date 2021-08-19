@@ -1,4 +1,6 @@
 import collections
+from itertools import starmap
+import numpy as np
 
 
 Point = collections.namedtuple('Point', ('x', 'y'))
@@ -6,13 +8,28 @@ Point = collections.namedtuple('Point', ('x', 'y'))
 
 def convex_hull(points):
     "Find the convex hull of a set of points."
+    # From numpy to numpy
+    ret_type = list
+    if isinstance(points, np.ndarray):
+        ret_type = np.ndarray
+        
+        assert points.ndim == 2
+    
+        npts, gdim = points.shape
+        assert gdim == 2
+        points = tuple(starmap(Point, points))
+
     # This is Peter Norvig's algorithm    
     if len(points) <= 3:
         return points
     # Find the two half-hulls and append them, but don't repeat first and last points
     upper = half_hull(sorted(points))
     lower = half_hull(reversed(sorted(points)))
-    return upper + lower[1:-1]
+    hull = upper + lower[1:-1]
+
+    if ret_type is np.ndarray:
+        return np.array(hull)
+    return hull
 
 
 def half_hull(sorted_points):

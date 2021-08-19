@@ -113,3 +113,21 @@ class EmbeddedMesh(df.Mesh):
         self.marking_function = f
         # Declare which tagged cells are found
         self.tagged_cells = set(markers)
+
+
+def ContourMesh(contour):
+    '''Build 1d mesh takingh successive vertices as cells'''
+    assert np.linalg.norm(contour[0] - contour[-1]) < 1E-13
+
+    _, gdim = contour.shape
+    tdim = 1
+    
+    coordinates = contour[:-1]
+    nvtx = len(coordinates)
+    cells = np.array([(i, (i+1)%nvtx) for i in range(nvtx)])
+
+    mesh = df.Mesh()
+    make_mesh(coordinates=coordinates, cells=cells, tdim=tdim, gdim=gdim,
+              mesh=mesh)
+
+    return mesh
