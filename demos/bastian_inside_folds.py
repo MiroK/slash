@@ -29,15 +29,19 @@ def walk_vertex_distance(mesh):
         v0 = v
 
         
-def walk_vertex_distance_from(mesh, shape_points):
+def walk_vertex_distance_from(mesh, shape_points, return_index=False):
     '''Walk along while computeting distance from shape (represented by points)'''
     assert is_loop(mesh)
     assert shape_points.ndim == 2
     
     x = mesh.coordinates()
+
     for v in walk_vertices(mesh):
         i = np.argmin(np.linalg.norm(shape_points - x[v], 2, axis=1))
-        yield v, np.linalg.norm(shape_points[i] - x[v])
+        if return_index:
+            yield v, np.linalg.norm(shape_points[i] - x[v]), i
+        else:
+            yield v, np.linalg.norm(shape_points[i] - x[v])
 
 
 def mesh_bounded_surface(mesh1d, scale=1., view=False):
@@ -310,6 +314,8 @@ if __name__ == '__main__':
     # Front one
     mesh1d_2 = clip_longest_fold(mesh1d_1, left=0.9, right=0.8)
     df.File('clipped_2.pvd') << mesh1d_2
+
+    df.File('clipped_2_mesh.xml') << mesh1d_2
     
     # 0.125 is a decent resolution
     # NOTE: each of the mesh1d_* could be meshed
