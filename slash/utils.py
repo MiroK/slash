@@ -151,3 +151,38 @@ def fit_ellipse(xy):
     center = np.array([x0, y0])
 
     return center, (a_max, vec_max), (a_min, vec_min)
+
+
+def surface_normal_vector(mesh):
+    '''(x, n(x)) for x the midpoints of facets on the surface'''
+    assert mesh.geometry().dim() == mesh.topology().dim()
+    
+    V = df.VectorFunctionSpace(mesh, 'Discontinuous Lagrange Trace', 0)
+    v = df.TestFunction(V)
+    n_ = df.FacetNormal(mesh)
+
+    K = df.FacetArea(mesh)
+    n = df.Function(V)
+    df.assemble((1/K)*df.dot(n_, v)*df.ds, tensor=n.vector())
+
+    # Mask like
+    Vi = V.sub(0).collapse()
+    v = df.TestFunction(Vi)
+    n_ = df.FacetNormal(mesh)
+
+    K = df.FacetArea(mesh)
+    mask = df.Function(Vi)
+    df.assemble((1/K)*df.dot(df.sqrt(df.dot(n_, n_)), v)*df.ds, tensor=mask.vector())
+    
+    mask_idx, = np.where(np.abs(mask.vector().get_local()) > 0)
+    sub_dofs = [np.array(V.sub(i).dofmap().dofs()) for i in range(V.num_sub_spaces())]
+
+    gdim = mesh.geometry().dim()
+    x = Vi.tabulate_dof_coordinates().reshape((-1, gdim))
+    # Center points
+    x = x[mask_idx]
+    # Now components of the vector are
+    n = n.vector().get_local()
+    n = np.column_stack([n[subi_dofs[mask_idx]] for subi_dofs in sub_dofs])
+
+    return x, n

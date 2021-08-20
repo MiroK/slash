@@ -251,3 +251,10 @@ if __name__ == '__main__':
     print(f'Target volume {vol0}')
     smesh.coordinates()[:] *= sqrt(vol0/vol_smoothed)
     print(f'Rescaled smoothed volume volume {assemble(Constant(1)*dx(domain=smesh))}')
+
+    File('smoothed_domain.pvd') << smesh
+
+    # Finally get the normal vector 
+    from slash.utils import surface_normal_vector
+
+    xn, nx = surface_normal_vector(smesh)
