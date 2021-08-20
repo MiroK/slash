@@ -1,5 +1,5 @@
 from slash.gmsh_interopt import msh_gmsh_model, mesh_from_gmsh
-from slash.branching import color_branches, is_loop, walk_vertices
+from slash.branching import color_branches, is_loop, walk_vertices, walk_cells
 from slash.embedded_mesh import ContourMesh
 from slash.utils import *
 
@@ -44,49 +44,57 @@ def walk_vertex_distance_from(mesh, shape_points, return_index=False):
             yield v, np.linalg.norm(shape_points[i] - x[v])
 
 
-def mesh_bounded_surface(mesh1d, scale=1., view=False):
+def mesh_bounded_surface(mesh1d, scale=1., view=False, loop_opts=None):
     '''Mesh the inside bounded by surfaces'''
-    # FIXME: lots of assumptions here on how the surfaces are enclosing each other
-    center = np.mean(mesh1d.coordinates(), axis=0).reshape((1, 2))
-    # ... and find the bounding surfaces
-    closed_surfaces, tags = connected_domains(mesh1d)
+    # Discover loops
+    if isinstance(mesh1d, df.Mesh):
+        # FIXME: lots of assumptions here on how the surfaces are enclosing each other
+        center = np.mean(mesh1d.coordinates(), axis=0).reshape((1, 2))
+        # ... and find the bounding surfaces
+        closed_surfaces, tags = connected_domains(mesh1d)
 
-    # Some of these loops practically enclose no volume
-    valid_bdries = []
-    for tag in range(*tags):
-        surf_mesh = entity_mesh(closed_surfaces, tag)
-        vol = approx_enclosed_volume(surf_mesh)
-        # Remove "empty" clusters
-        vol > 1E-10 and valid_bdries.append(surf_mesh)
+        # Some of these loops practically enclose no volume
+        valid_bdries = []
+        for tag in range(*tags):
+            surf_mesh = entity_mesh(closed_surfaces, tag)
+            vol = approx_enclosed_volume(surf_mesh)
+            # Remove "empty" clusters
+            vol > 1E-10 and valid_bdries.append(surf_mesh)
 
-    loops = []
-    # We restrict ourselves here to bounding surfaces that are simple
-    # loops, i.e, there is no branching for they are easy to handle for gmsh
-    loop_len = lambda t, m: volume_function(m, t).vector().sum()
+        loops = []
+        # We restrict ourselves here to bounding surfaces that are simple
+        # loops, i.e, there is no branching for they are easy to handle for gmsh
+        loop_len = lambda t, m: volume_function(m, t).vector().sum()
 
-    for tag, surf_mesh in enumerate(valid_bdries, 1):
-        foo, bcolors, lcolors = color_branches(surf_mesh)
-        assert not bcolors
-        # Only keep the longest loop
-        if len(lcolors) > 1:
-            keep_tag = max(lcolors, key=lambda t, m=foo: loop_len(t, m))
-            the_loop = submesh(foo, keep_tag)
-        else:
-            the_loop = surf_mesh
+        for tag, surf_mesh in enumerate(valid_bdries, 1):
+            foo, bcolors, lcolors = color_branches(surf_mesh)
+            assert not bcolors
+            # Only keep the longest loop
+            if len(lcolors) > 1:
+                keep_tag = max(lcolors, key=lambda t, m=foo: loop_len(t, m))
+                the_loop = submesh(foo, keep_tag)
+            else:
+                the_loop = surf_mesh
 
-        assert is_loop(the_loop)
-        assert has_unique_vertices(the_loop)
+            assert is_loop(the_loop)
+            assert has_unique_vertices(the_loop)
 
-        loops.append(the_loop)
+            loops.append(the_loop)
 
-    # FIXME: here we could possibly fix the loop meshes e.g. by kicking
-    # out the smallest cells
+        # FIXME: here we could possibly fix the loop meshes e.g. by kicking
+        # out the smallest cells
 
-    # # FIXME: how the surfaces are layed out should be done properly and
-    # # structured of how to use nest them to define the volumes should be
-    # # done based on graph theory. But what we do here is simply assume
-    # # that the largest surface encloses the smallest ones
-    loops = sorted(loops, key=lambda mesh: loop_len(None, mesh), reverse=True)
+        # # FIXME: how the surfaces are layed out should be done properly and
+        # # structured of how to use nest them to define the volumes should be
+        # # done based on graph theory. But what we do here is simply assume
+        # # that the largest surface encloses the smallest ones
+        loops = sorted(loops, key=lambda mesh: loop_len(None, mesh), reverse=True)
+        loop_opts = {}
+    else:
+        assert loop_opts is not None
+
+        mesh = mesh1d.mesh()
+        loops = [df.SubMesh(mesh, mesh1d, tag) for tag in loop_opts]
 
     gmsh.initialize(['', '-clscale', str(scale)])
     model = gmsh.model
@@ -97,18 +105,21 @@ def mesh_bounded_surface(mesh1d, scale=1., view=False):
     curve_loops = []
     for tag, loop in enumerate(loops, 1):
         x = loop.coordinates()
-        # There are severral ways to define the curves
-        # 1) I prefer this one where we reparatrize the surface by fitting
-        # spline to it
         mapping = np.array([factory.addPoint(*xi, z=0) for xi in x])
-        loop_vtx = mapping[list(walk_vertices(loop))]
-        lines = [factory.addBSpline(loop_vtx)]
 
-        # 2) We reuse vertices of the original mesh - this essentially determines
-        # the mesh size and in addition the curves may be wrong
-        # cells = mapping[loop.cells()[list(walk_cells(loop))].flatten()].reshape((-1, 2))
-        # lines = [factory.addLine(*c) for c in cells]
-
+        if loop_opts.get(tag, True):
+            # There are severral ways to define the curves
+            # 1) I prefer this one where we reparatrize the surface by fitting
+            # spline to it
+            loop_vtx = mapping[list(walk_vertices(loop))]
+            lines = [factory.addBSpline(loop_vtx)]
+        else:
+            # 2) We reuse vertices of the original mesh - this essentially determines
+            # the mesh size and in addition the curves may be wrong
+            cells = [c[0] for c in walk_cells(loop)]
+            cells = mapping[(loop.cells()[cells]).flatten()].reshape((-1, 2))
+            lines = [factory.addLine(*c) for c in cells]
+            
         factory.synchronize()
         model.addPhysicalGroup(1, lines, tag)
 
@@ -283,7 +294,7 @@ def clip_longest_fold(mesh1d, left=0.75, right=0.75, view=False):
         plt.show()
     
     # Mesh it
-    mesh1d = ContourMesh(contour)
+    mesh1d, _ = ContourMesh(contour)
 
     return mesh1d
 

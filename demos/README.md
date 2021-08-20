@@ -14,3 +14,8 @@ Final mesh ((0.36709092822767075, 1.0000000000058051, 0.0003195745801995504, 0.2
 
 ## Mesh size
 - This can be adjusted in the code by setting `Mesh.CharacteristicLengthFactor`
+
+## Contour smoothing
+- Requires `pyvista` and `networkx`
+- Smoothing parameters are `alpha` and `T` final in solving the heat equation
+and the contour line temperature that is used to define the smoothed surface

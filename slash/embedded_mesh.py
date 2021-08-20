@@ -117,17 +117,38 @@ class EmbeddedMesh(df.Mesh):
 
 def ContourMesh(contour):
     '''Build 1d mesh takingh successive vertices as cells'''
-    assert np.linalg.norm(contour[0] - contour[-1]) < 1E-13
+    # NOTE: for several contours we assume that they don't intersect, 
+    # have common vertices (but this is not checked)
 
-    _, gdim = contour.shape
+    if isinstance(contour, np.ndarray):
+        contour = (contour, )
+    assert isinstance(contour, (tuple, list))
+    assert all(isinstance(c, np.ndarray) for c in contour)
+    assert all(np.linalg.norm(c[0] - c[-1]) < 1E-13 for c in contour)
+
     tdim = 1
-    
-    coordinates = contour[:-1]
-    nvtx = len(coordinates)
-    cells = np.array([(i, (i+1)%nvtx) for i in range(nvtx)])
+    coordinates, cells, offsets = [], [], [0]
+    for c in contour:
+        _, gdim = c.shape
+        
+        coordinates_ = c[:-1]
+        nvtx = len(coordinates_)
+        cells_ = offsets[-1] + np.array([(i, (i+1)%nvtx) for i in range(nvtx)])
+
+        coordinates.append(coordinates_)
+        cells.append(cells_)
+        offsets.append(offsets[-1] + nvtx)
+    # Cast
+    coordinates, cells = map(np.row_stack, (coordinates, cells))
 
     mesh = df.Mesh()
     make_mesh(coordinates=coordinates, cells=cells, tdim=tdim, gdim=gdim,
               mesh=mesh)
 
-    return mesh
+    # Color them
+    cell_f = df.MeshFunction('size_t', mesh, tdim, 0)
+    values = cell_f.array()
+    for c, (first, last) in enumerate(zip(offsets[:-1], offsets[1:]), 1):
+        values[first:last] = c
+
+    return mesh, cell_f
