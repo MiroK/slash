@@ -166,10 +166,11 @@ if __name__ == '__main__':
     # For API purposes we want one mesh
     mesh, cell_f = ContourMesh([bbox, inside_contour])
 
+    forced = True
     # Now the contours are used to define a mesh on which we want to solve
     # heat equation for smoothing
     # Generate
-    if not all(os.path.exists(f) for f in ('heat_eq_mesh.xml', 'heat_eq_bdries.xml')):
+    if forced or not all(os.path.exists(f) for f in ('heat_eq_mesh.xml', 'heat_eq_bdries.xml')):
         _, entity_fs = mesh_bounded_surface(cell_f, scale=1/2.**4, view=False, loop_opts={1: False, 2: True})
         bdries = entity_fs[1]
         heat_mesh = bdries.mesh()
