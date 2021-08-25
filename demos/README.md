@@ -27,5 +27,5 @@ these as subdomains with boundaries marked such that the colors agree between su
 that share the boundary
 
 <p align="center">
-   <img src="https://github.com/mirok/slash/blob/main/docs/partition.png">
+   <img src="https://github.com/MiroK/slash/blob/master/doc/partition.png">
 </p>
