@@ -19,3 +19,13 @@ Final mesh ((0.36709092822767075, 1.0000000000058051, 0.0003195745801995504, 0.2
 - Requires `pyvista` and `networkx`
 - Smoothing parameters are `alpha` and `T` final in solving the heat equation
 and the contour line temperature that is used to define the smoothed surface
+
+## Partitioning
+- Requires [pymetis](https://github.com/inducer/pymetis)
+- We can partition mesh into several (not necessary continguous) pieces and represent
+these as subdomains with boundaries marked such that the colors agree between subdomains
+that share the boundary
+
+<p align="center">
+   <img src="https://github.com/mirok/slash/blob/main/docs/partition.png">
+</p>
