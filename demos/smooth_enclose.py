@@ -125,6 +125,7 @@ def contour_len(X, points):
 
 if __name__ == '__main__':
     from bastian_inside_folds import mesh_bounded_surface, walk_vertex_distance
+    from contour_meshing import mesh_bounded_contours
     from slash.convex_hull import convex_hull
     from slash.embedded_mesh import ContourMesh
     import matplotlib.pyplot as plt
@@ -186,76 +187,71 @@ if __name__ == '__main__':
     dirichlet_data = {2: Constant(1)}
     neumann_data = {1: Constant(0)}
     u0 = Constant(0)
-    alpha = 0.2
     f = Constant(0)
 
-    for t, u0 in solve_heat(alpha, bdries, f, u0, dirichlet_data, neumann_data):
+    # Brain
+    alpha = 0.5
+
+    for t, uh in solve_heat(alpha, bdries, f, u0, dirichlet_data, neumann_data):
         # NOTE: maybe you want to store at intermediate times 
         continue
 
-    # When we are done with smoothing we perhaps want to try with several
-    # "temperatures" so we store the field so that smoothing needs not to
-    # be repeated and we can resume the pipeline from here on
-    
-    with XDMFFile(heat_mesh.mpi_comm(), 'smoothed.xdmf') as file:
-        file.write_checkpoint(u0, "u0", 0, XDMFFile.Encoding.HDF5, append=False)
-
-    with XDMFFile(heat_mesh.mpi_comm(), 'smoothed_mesh.xdmf') as file:
-        file.write(heat_mesh)
-    
-    # Here's where we'd resume        
-    heat_mesh = Mesh(MPI.comm_self)
-    with XDMFFile(heat_mesh.mpi_comm(), 'smoothed_mesh.xdmf') as file:
-        file.read(heat_mesh)
-        
-    V = FunctionSpace(heat_mesh, 'CG', 1)
-    u0 = Function(V)
-    # ... also load the data
-        
-    with XDMFFile(heat_mesh.mpi_comm(), 'smoothed.xdmf') as file:
-        file.read_checkpoint(u0, "u0", 0)    
-
-    # Check the smoothing effect
-    plt.figure()
-    # Original
-    plt.plot(inside_contour[:, 0], inside_contour[:, 1])
-    # Smoothed
-    cvalues = [0.125]
-
-    X, pieces = get_contourlines(u0, cvalues)
+    cvalues = [0.95]
+    X, pieces = get_contourlines(uh, cvalues)
     for cval, pieces_of_contour in pieces:
-        line = None
-        # This is how we'd look at all the pieces
-        # for k, contour_piece in enumerate(pieces_of_contour, 1):
-        #     x, y = X[contour_piece].T
-        #     line, = plt.plot(x, y, color=line.get_color() if line is not None else None)
-        # print(f'{cval} has {k} pieces')
-
         # But we probably want only the largest one
         clen = lambda pts, X=X: contour_len(X, pts)
         contour_piece = max(pieces_of_contour, key=clen)
-        x, y = X[contour_piece].T
-        line, = plt.plot(x, y, color=line.get_color() if line is not None else None)
-    plt.axis('equal')
-    plt.show()
+    # Brain's mesh
+    brain_mesh, _ = ContourMesh(X[contour_piece])
 
-    # It reamains to make the mesh as in `bastian_inside_fold`
-    cmesh, _ = ContourMesh(X[contour_piece])
-    
-    smesh, _ = mesh_bounded_surface(cmesh, scale=1/2**4, view=False)
+    # Skull
+    alpha = 10
 
-    File('smoothed_domain.xml') << smesh
-    # Let's try to preseve the volume
-    # The original is the |bbox volume| =  |outside| + |inside|
-    vol0 = np.prod(ur-ll) - assemble(Constant(1)*dx(domain=heat_mesh))
-    vol_smoothed = assemble(Constant(1)*dx(domain=smesh))
-    print(f'Target volume {vol0}')
-    smesh.coordinates()[:] *= sqrt(vol0/vol_smoothed)
-    print(f'Rescaled smoothed volume volume {assemble(Constant(1)*dx(domain=smesh))}')
+    for t, uh in solve_heat(alpha, bdries, f, u0, dirichlet_data, neumann_data):
+        # NOTE: maybe you want to store at intermediate times 
+        continue
 
-    File('smoothed_domain.pvd') << smesh
+    cvalues = [0.1]
+    X, pieces = get_contourlines(uh, cvalues)
+    for cval, pieces_of_contour in pieces:
+        # But we probably want only the largest one
+        clen = lambda pts, X=X: contour_len(X, pts)
+        contour_piece = max(pieces_of_contour, key=clen)
+    # Brain's mesh
+    skull_mesh, _ = ContourMesh(X[contour_piece])
 
-    # Finally get the normal vector 
-    from slash.utils import surface_normal_vector
+    surfaces = [(1, 2), (2, )]
+    contours = {1: skull_mesh, 2: brain_mesh}
 
-    xn, nx = surface_normal_vector(smesh)
+    for i in range(3, 7):
+        smesh, entity_fs = mesh_bounded_contours(contours, surfaces, scale=1/2**i, view=False)
+        print(sum(entity_fs[1].array() == 2), '<<')
+        with HDF5File(MPI.comm_world, f'brain_skull_{i}.h5', 'w') as out:
+            out.write(smesh, 'mesh')
+            out.write(entity_fs[2], 'volumes')
+            out.write(entity_fs[1], 'surfaces')
+
+    File('brain_skull.pvd') << smesh
+    File('brain_skull_subdomains.pvd') << entity_fs[2]    
+    File('brain_skull_interfaces.pvd') << entity_fs[1]
+
+        
+    # print(cmesh.num_cells())
+    # smesh, _ = mesh_bounded_surface(cmesh, scale=1/2**4, view=False)
+
+    # File('smoothed_domain.xml') << smesh
+    # # Let's try to preseve the volume
+    # # The original is the |bbox volume| =  |outside| + |inside|
+    # vol0 = np.prod(ur-ll) - assemble(Constant(1)*dx(domain=heat_mesh))
+    # vol_smoothed = assemble(Constant(1)*dx(domain=smesh))
+    # print(f'Target volume {vol0}')
+    # smesh.coordinates()[:] *= sqrt(vol0/vol_smoothed)
+    # print(f'Rescaled smoothed volume volume {assemble(Constant(1)*dx(domain=smesh))}')
+
+    # File('smoothed_domain.pvd') << smesh
+
+    # # Finally get the normal vector 
+    # from slash.utils import surface_normal_vector
+
+    # xn, nx = surface_normal_vector(smesh)
