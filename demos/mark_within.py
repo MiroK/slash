@@ -14,6 +14,7 @@
 # surface to disjoint surfaces and we want to connect with the colored
 # ones that neighbor it but are small
 from slash.embedded_mesh import EmbeddedMesh
+from itertools import combinations
 import networkx as nx
 import dolfin as df
 import numpy as np
@@ -54,7 +55,7 @@ def as_graph(cell_f, avoid):
         edge = f2c(f)
         colors = cell_f[edge]
         if avoid not in list(colors):
-            g.add_edge(*edge)
+            g.add_edges_from(combinations(edge, 2))
         else:
             # We want the okay cell that neigbors avoid
             bdry.extend(edge[colors != avoid])
@@ -62,9 +63,9 @@ def as_graph(cell_f, avoid):
     return g, bdry
 
 
-def mark_within(facet_f, center, radius,  mark_color, restrict_color=None):
+def mark_within(facet_f, centers, radii,  mark_color, restrict_color=None):
     '''
-    Return groups of facets (ids) that are with the sphere(center, radius) 
+    Return groups of facets (ids) that are with the spheres(centers, radiii) 
     with neighboring connected components 
     '''
     # Use entire boundary if not specified
@@ -76,20 +77,32 @@ def mark_within(facet_f, center, radius,  mark_color, restrict_color=None):
     # them as cells of an embeded mesh
     surface_mesh = EmbeddedMesh(facet_f, restrict_color)
     assert is_closed_surface(surface_mesh), df.File('surface_mesh.pvd') << surface_mesh
-    
-    assert len(center) == surface_mesh.geometry().dim()
-    if len(center) == 2:
-        char_foo = df.CompiledSubDomain('(x[0]-x0)*(x[0]-x0) + (x[1]-x1)*(x[1]-x1) < rad*rad',
-                                        rad=radius, x0=center[0], x1=center[1])
-    else:
-        assert len(center) == 3
-        char_foo = df.CompiledSubDomain('(x[0]-x0)*(x[0]-x0) + (x[1]-x1)*(x[1]-x1) + (x[2]-x2)*(x[2]-x2) < rad*rad',
-                                        rad=radius, x0=center[0], x1=center[1], x2=center[2])
 
+    assert len(centers) == len(radii)
     cell_f = surface_mesh.marking_function
-    char_foo.mark(cell_f, mark_color)
     array = cell_f.array()
-    print(f'Marked with geometry constraint {sum(array == mark_color)}')
+    inside_balls = []
+    
+    for center, radius in zip(centers, radii):
+        # Reset for new ball
+        array[:] = restrict_color
+        
+        assert len(center) == surface_mesh.geometry().dim()
+        if len(center) == 2:
+            char_foo = df.CompiledSubDomain('(x[0]-x0)*(x[0]-x0) + (x[1]-x1)*(x[1]-x1) < rad*rad',
+                                            rad=radius, x0=center[0], x1=center[1])
+        else:
+            assert len(center) == 3
+            char_foo = df.CompiledSubDomain('(x[0]-x0)*(x[0]-x0) + (x[1]-x1)*(x[1]-x1) + (x[2]-x2)*(x[2]-x2) < rad*rad',
+                                            rad=radius, x0=center[0], x1=center[1], x2=center[2])
+
+        char_foo.mark(cell_f, mark_color)
+        marked, = np.where(array == mark_color)
+        print(f'Marked with ball {(center, radius)} constraint {len(marked)}')
+        inside_balls.extend(marked)
+    # Union
+    inside_balls = np.unique(inside_balls)
+    array[inside_balls] = mark_color
 
     # The idea next is to create a graph that avoids the cell already
     # marked
@@ -139,7 +152,7 @@ if __name__ == '__main__':
     
     mark_color = 100
     #for cc in
-    for cc in mark_within(facet_f, center=[0.5, 0], radius=0.3, mark_color=mark_color):
+    for cc in mark_within(facet_f, centers=[[0.5, 0], [0.5, 0.2]], radii=[0.3, 0.35], mark_color=mark_color):
         # Now we just color the surfaces with different colors to visualize the
         # marking logic. In general I guess we would use the same color and stop
         # at some point
