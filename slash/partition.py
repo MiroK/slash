@@ -3,15 +3,21 @@ from collections import defaultdict, namedtuple
 from itertools import takewhile
 import dolfin as df
 import numpy as np
+import operator
 import pymetis
 # https://github.com/inducer/pymetis
 
 
-def mesh2graph(mesh):
+def mesh2graph(arg, color=None):
     '''
     Graph representation of the mesh. Cell is a node, edge is determined 
     by facet connectivity
     '''
+    if isinstance(arg, df.Mesh):
+        return mesh2graph(df.MeshFunction('size_t', arg, arg.topology().dim(), 0), color=0)
+
+    mesh = arg.mesh()
+    
     tdim = mesh.topology().dim()
     fdim = tdim - 1
 
@@ -19,7 +25,7 @@ def mesh2graph(mesh):
     _, f2c = mesh.init(fdim, tdim), mesh.topology()(fdim, tdim)
     # Cell to cell connectivity in terms of facets 
     adj_list = [np.fromiter(set(sum((f2c(f).tolist() for f in c2f(c)), [])) - set((c, )), dtype='uintp')
-                for c in range(mesh.num_cells())]
+                for c in map(operator.methodcaller('index'), df.SubsetIterator(arg, color))]
     
     return adj_list
 
