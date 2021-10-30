@@ -1,6 +1,7 @@
 from slash.embedded_mesh import EmbeddedMesh
 from slash.partition import mesh2graph
-from itertools import count
+from itertools import count, dropwhile
+from collections import defaultdict
 import networkx as nx
 import dolfin as df
 import numpy as np
@@ -124,7 +125,7 @@ def connected_components(f, color):
         bdry_ccs = connected_components(cc_facet_f, color=1)
         # What we want is the numbering of the facets as entities of mesh
         # Facets of cc mesh as facets of mesh, cc_mesh is a (cell) submesh of mesh
-        bdry_ccs = tuple(as_parent_entities(bdry_cc, cc_mesh, mesh) for bdry_cc in bdry_ccs)
+        bdry_ccs = tuple(as_parent_entities(bdry_cc, cc_mesh, f.mesh()) for bdry_cc in bdry_ccs)
         # And the you have it (indices of cell, (indices of boundaries))
         components.append((cc, (bdry_ccs)))
         # Reset for next on
@@ -136,7 +137,7 @@ def connected_components(f, color):
 def mark_connected_components(cell_f, tag=None):
     '''
     Cell function marking connected components, facet marking cc boundaries 
-    and a lookup table
+    and a lookup table {color -> {colored cc originally of color -> colored boundaries}
     '''
     tags = set(cell_f.array())
     assert len(tags) > 1    
@@ -145,50 +146,83 @@ def mark_connected_components(cell_f, tag=None):
 
     mesh = cell_f.mesh()
     cc, cc_boundaries, lookup = CellFunction(mesh), FacetFunction(mesh), {}
+    # Want to have a mapping of which islands descend from one color
+    tag_children = defaultdict(list)
+    
     cc_array, cc_boundaries_array = cc.array(), cc_boundaries.array()
     cc_colors, cc_bdry_colors = count(1), count(1)
 
     visited = {}
-    is_visited = lambda facets: [tag
-                                 for tag, bdry in visited.items()
-                                 if any(f in bdry for f in facets)]
+    is_visited = lambda facets, d=visited: (next(
+        dropwhile(lambda tag: not any(f in d[tag] for f in facets), d)
+    ), )
 
-    tags = iter(tags)
-    tag = next(tags)
-    for cc_idx, cc_bdry_indices in connected_components(cell_f, tag):
-        cc_color = next(cc_colors)
-        cc_array[cc_idx] = cc_color
-
-        cc_bdry_colors_ = []
-        for cc_bdry_index in cc_bdry_indices:
-            bdry_color = next(cc_bdry_colors)
-            cc_bdry_colors_.append(bdry_color)
-            cc_boundaries_array[cc_bdry_index] = bdry_color
-
-            visited[bdry_color] = set(cc_bdry_index)
-
-        lookup[cc_color] = tuple(cc_bdry_colors_)
-
-    for tag in tags:
+    for itag, tag in enumerate(tags):
         for cc_idx, cc_bdry_indices in connected_components(cell_f, tag):
             cc_color = next(cc_colors)
             cc_array[cc_idx] = cc_color
 
-            cc_bdry_colors_ = []
+            cc_bdry_colors_ = set()
             for cc_bdry_index in cc_bdry_indices:
-                bdry_color = is_visited(cc_bdry_index)
+                # For the first tag, since the connected components are
+                # distince the boundaries do not need to check for the
+                # duplicates
+                if itag == 0:
+                    bdry_color = 0
+                else:
+                    bdry_color = is_visited(cc_bdry_index)
+                    
                 if not bdry_color:
                     bdry_color = next(cc_bdry_colors)
                     visited[bdry_color] = set(cc_bdry_index)
                 else:
                     bdry_color, = bdry_color
                     
-                cc_bdry_colors_.append(bdry_color)
+                cc_bdry_colors_.add(bdry_color)
                 cc_boundaries_array[cc_bdry_index] = bdry_color
 
-            lookup[cc_color] = tuple(cc_bdry_colors_)
+            lookup[cc_color] = cc_bdry_colors_
+            tag_children[tag].append(cc_color)
 
-    return cc, cc_boundaries, lookup
+    return cc, cc_boundaries, lookup, tag_children
+
+
+def close_1surf_bounded_volumes(cell_f, facet_f, lookup, predicate=lambda v, vc: True):
+    '''Merge with the surrounding'''
+    found = False
+    
+    cell_f_arr, facet_f_arr = cell_f.array(), facet_f.array()
+    items = list(lookup.items())
+        
+    for vol_color, surf_colors in items:
+        # NOTE: the assumption that small volumes have one bounded surface
+        if len(surf_colors) == 1:
+            vol = EmbeddedMesh(cell_f, vol_color)
+            if predicate(vol, vol_color):
+                found = True
+
+                surf_color, = surf_colors
+                # Change the color based on the surrounding.
+                # Neighbor = not us who has the boundary of the same color
+                outer = next(dropwhile(lambda tag: not(tag != vol_color and surf_color in lookup[tag]),
+                                       lookup))
+                cell_f_arr[np.where(cell_f_arr == vol_color)] = outer
+                facet_f_arr[np.where(facet_f_arr == surf_color)] = 0
+
+                del lookup[vol_color]
+                lookup[outer].remove(surf_color)
+                 
+    if found:
+        return close_1surf_bounded_volumes(cell_f, facet_f, lookup, predicate)
+    return cell_f, facet_f, lookup
+
+
+def close_small_volumes(cell_f, facet_f, lookup, tol):
+    '''Remove based on volume'''
+    def predicate(vol, vc, tol=tol):
+        return df.assemble(df.Constant(1)*df.dx(domain=vol)) < tol
+
+    return close_1surf_bounded_volumes(cell_f, facet_f, lookup, predicate)    
 
 # --------------------------------------------------------------------
 
@@ -209,10 +243,21 @@ if __name__ == '__main__':
                                      '(0.25 - tol < x[1])',
                                      '(x[1] < 0.75 + tol)']), tol=1E-08).mark(cell_f, 1)
 
-    cc, cc_bdries, looup = mark_connected_components(cell_f)    
-    # submesh = df.SubMesh(mesh, cell_f, 2)
-    # ff = FacetFunction(submesh)
-    # df.DomainBoundary().mark(ff, 1)
 
+    mesh = df.Mesh()
+    hdf = df.HDF5File(mesh.mpi_comm(), "/home/mirok/Downloads/021_coronal_16/brain_mesh.h5", "r")
+    hdf.read(mesh, "/mesh", False)
+    subdomains = df.MeshFunction("size_t", mesh, mesh.topology().dim())
+    hdf.read(subdomains, "/subdomains")
     
-    # print(connected_components(ff, color=1))
+    cc, cc_bdries, lookup, _ = mark_connected_components(subdomains)
+
+    df.File('cc.pvd') << cc
+    df.File('cc_bdries.pvd') << cc_bdries
+
+    cc, cc_bdries, lookup = close_small_volumes(tol=10, cell_f=cc, facet_f=cc_bdries, lookup=lookup)    
+    cc, cc_bdries, lookup = close_small_volumes(tol=100, cell_f=cc, facet_f=cc_bdries, lookup=lookup)
+
+    df.File('closed_cc.pvd') << cc
+    df.File('closed_cc_bdries.pvd') << cc_bdries
+    
