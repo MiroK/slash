@@ -109,7 +109,7 @@ if __name__ == '__main__':
     df.File('closed_cc.pvd') << cc
     df.File('closed_cc_bdries.pvd') << cc_bdries
 
-    which = 'hole'
+    which = 'noHole'
 
     # The one that needs to be smoothed
     inner_contour = (2, )
@@ -151,9 +151,9 @@ if __name__ == '__main__':
                     8: c_8, 9: c_9, 11: c_11, 12: c_12, 18: c_18}
         
 
-    for i in range(4, 8):
+    for i in range(2, 7):
         smesh, entity_fs = mesh_bounded_contours(contours, surfaces, scale=1/2**i, view=False)
-        print(sum(entity_fs[1].array() != 0), '<<')
+        print(smesh.hmin(), sum(entity_fs[1].array() == 2), '<<')
         
         with df.HDF5File(df.MPI.comm_world, f'{which}_brain_skull_coloronal{i}.h5', 'w') as out:
             out.write(smesh, 'mesh')
