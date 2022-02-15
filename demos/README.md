@@ -21,7 +21,7 @@ Final mesh ((0.36709092822767075, 1.0000000000058051, 0.0003195745801995504, 0.2
 and the contour line temperature that is used to define the smoothed surface
 
 ## Partitioning
-- Requires [pymetis](https://github.com/inducer/pymetis)
+- Requires [pymetis](https://github.com/inducer/pymetis) installed from source
 - We can partition mesh into several (not necessary continguous) pieces and represent
 these as subdomains with boundaries marked such that the colors agree between subdomains
 that share the boundary

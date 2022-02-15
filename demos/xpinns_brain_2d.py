@@ -20,3 +20,6 @@ df.File('global_facet_f.pvd') << interface.facet_f
 
 for color, sub in subdomains.items():
     df.File(f'subd_{color}_facet_f.pvd') << sub
+    # Let's also save these as xml submeshes
+    df.File(f'submesh_{color}.xml') << sub.mesh()
+    df.File(f'submesh_{color}_facet_region.xml') << sub
