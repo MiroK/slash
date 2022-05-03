@@ -196,7 +196,7 @@ if __name__ == '__main__':
     # When we are done with smoothing we perhaps want to try with several
     # "temperatures" so we store the field so that smoothing needs not to
     # be repeated and we can resume the pipeline from here on
-    
+
     with XDMFFile(heat_mesh.mpi_comm(), 'smoothed.xdmf') as file:
         file.write_checkpoint(u0, "u0", 0, XDMFFile.Encoding.HDF5, append=False)
 
@@ -259,3 +259,6 @@ if __name__ == '__main__':
     from slash.utils import surface_normal_vector
 
     xn, nx = surface_normal_vector(smesh)
+
+    with HDF5File(smesh.mpi_comm(), f'axial_mesh.h5', 'w') as out:
+        out.write(smesh, 'mesh')

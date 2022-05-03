@@ -224,7 +224,7 @@ if __name__ == '__main__':
     surfaces = [(1, 2), (2, )]
     contours = {1: skull_mesh, 2: brain_mesh}
 
-    for i in range(3, 5):
+    for i in range(1, 2):
         smesh, entity_fs = mesh_bounded_contours(contours, surfaces, scale=1/2**i, view=False)
         print(sum(entity_fs[1].array() == 2), '<<')
         with HDF5File(MPI.comm_world, f'brain_skull_{i}.h5', 'w') as out:

@@ -72,7 +72,8 @@ if __name__ == '__main__':
     }
     
     mesh = df.Mesh()
-    hdf = df.HDF5File(mesh.mpi_comm(), "./brain_mesh.h5", "r")
+    hdf = df.HDF5File(mesh.mpi_comm(), "./coronal_mesh.h5", "r")   # Coronal
+
     hdf.read(mesh, "/mesh", False)
     subdomains = df.MeshFunction("size_t", mesh, mesh.topology().dim())
     hdf.read(subdomains, "/subdomains")
