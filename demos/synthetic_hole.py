@@ -72,7 +72,7 @@ if __name__ == '__main__':
     }
     
     mesh = df.Mesh()
-    hdf = df.HDF5File(mesh.mpi_comm(), "/home/mirok/Downloads/021_coronal_16/brain_mesh.h5", "r")
+    hdf = df.HDF5File(mesh.mpi_comm(), "./brain_mesh.h5", "r")
     hdf.read(mesh, "/mesh", False)
     subdomains = df.MeshFunction("size_t", mesh, mesh.topology().dim())
     hdf.read(subdomains, "/subdomains")
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     contours = {1: outer_contour_mesh, 2: inner_contour_mesh}
 
     # Different refiments
-    for i in range(2, 5):
+    for i in range(2, 3):
         smesh, entity_fs = mesh_bounded_contours(contours, surfaces, scale=1/2**i, view=False)
         print(smesh.hmin(), sum(entity_fs[1].array() == 2), '<<')
         

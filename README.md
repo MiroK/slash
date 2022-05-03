@@ -10,3 +10,4 @@ In addition to the `FEniCS` stack (things are tested for version `2019.1.0`) als
 
 ## Installation
 Put the directory on `PYTHONPATH`, e.g. `source setup.rc` for this bash session
+

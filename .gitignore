@@ -6,3 +6,7 @@
 *.vtu
 *.h5
 *.xdmf
+
+*.png
+*.log
+*.zip
